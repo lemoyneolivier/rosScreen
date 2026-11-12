@@ -1,0 +1,11 @@
+{
+    "serverPath" : "../rosScreen/HTML",
+    "savePath" : "../data",
+    "logfile" : "../log/logScreen.log",
+    "logLevelFilter" : "L",
+    "testMode" : true,
+    "serverAddress" : "127.0.0.1",
+    "serverPort" : 3000,
+    "stepFilter" : 0.1,
+    "roundingPrecision" : 3 
+}

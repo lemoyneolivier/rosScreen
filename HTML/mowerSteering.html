@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Tondeuse autonome Arduino</title>
+<script async type= "text/javascript" src="mowerPiloting.js"></script> 
+<style>
+  :root { --blue:#156082; --green:#196B24; --red:#C72030;--yellow:#FCF270;--grey:#D0D0D0; --btn:#C0C0C0; }
+  body { margin:0; background:#fff; font-family:Aptos, Calibri, Arial, sans-serif; }
+  #app { position:relative; width:1180px; height:666px; margin:20px auto; }
+  .abs { position:absolute; box-sizing:border-box; }
+
+  /* Bandeau */
+  #banner { left:0; top:0; width:536px; height:64px;z-index: 2;}
+
+  /* Barres bleues */
+  .bar { left:0; width:536px; background:var(--blue); }
+  #topbar { top:77px; height:63px; }
+  #bottombar { top:600px; height:63px; }
+  #wifi { left:12px; top:92px; width:56px; height:38px; background:#fff; display:flex; align-items:center; justify-content:center; }
+  .arrow { top:90px; width:102px; height:41px; background:var(--btn); border:1px solid #555;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .arrow:active { background:#aaa; }
+  .arrow svg { width:70px; height:28px; }
+
+  .error { top:30px; width:300px; height:20px; background:var(--red); border:2px solid var(--red);z-index: 10;}
+  .warning { top:30px; width:300px; height:20px; background:var(--yellow); border:2px solid var(--yellow);z-index: 10;}
+  
+  /* Panneaux */
+  .panel { top:150px; width:536px; height:443px; background:var(--grey); border:2px solid var(--blue); }
+  .panel h3 { margin:6px 0 0 14px; font:400 21px Aptos, Arial, sans-serif; text-decoration:underline; }
+  table { border-collapse:collapse; width:500px; margin:6px 0 0 6px; font-size:15px; }
+  th { background:var(--green); color:#fff; text-align:left; padding:3px 8px; border:1px solid #fff; }
+  td { padding:3px 8px; border:1px solid #fff; height:22px; }
+  tbody tr:nth-child(odd)  td { background:#CED5CD; }
+  tbody tr:nth-child(even) td { background:#E7ECE6; }
+
+  /* Boutons du bas */
+  .btn { top:610px; height:45px; background:var(--btn); border:2px solid #222; font:bold 20px Arial; cursor:pointer; }
+  .btn:active { background:#aaa; }
+
+  /* Carte **/ 
+  #map { left:550px; top:150px; width:700px; height:442px; background:#88E390; border:1px solid #1f6b2b; }
+  #direction { left:550px; top:0px; width:140px; height:140px; background:#777; border:2px solid #222;}
+  #mowerPosition { left:720px; top:0px; width:530px; height:140px; background:#777; border:2px solid #222;}
+  #logArea { left:550px; top:600px; width:700px; height:63px; background:#777; border:2px solid #222;}
+
+</style>
+</head>
+<body onload="loadFile()">
+<div id="app">
+
+  <div id="msg" class="abs"></div>
+
+  <div id="banner" class="abs"><img src="imgs/mowerScreen.png" width="100%" height="110%"/></div>
+
+  <div id="topbar" class="abs bar"></div>
+  <div id="wifi" class="abs" title="Connexion">
+    <img src="imgs/connexionOff.png" id="connexion" width="100%" height="100%"/>
+  </div>
+
+  <button class="abs arrow" style="left:80px" data-dir="Avant"><img src="imgs/avance.png" onclick="executeOrder('Forward', 50)"/></button>
+  <button class="abs arrow" style="left:194px" data-dir="Arrière"><img src="imgs/recule.png" onclick="executeOrder('Backward', 50)"/></button>
+  <button class="abs arrow" style="left:308px" data-dir="Droite"><img src="imgs/droite.png" onclick="executeOrder('Right', 50)"/></button>
+  <button class="abs arrow" style="left:422px" data-dir="Gauche"><img src="imgs/gauche.png" onclick="executeOrder('Left', 50)"/></button>
+
+  <div class="abs panel" style="left:0px; overflow: auto">
+    <h3>Odometry</h3>
+    <table id="odom"><thead><tr><th style="width:48%">Time</th><th>X</th><th>Y</th></tr></thead>
+      <tbody></tbody></table>
+  </div>
+
+
+  <div id="bottombar" class="abs bar"></div>
+  <button id="clear" class="abs btn" style="left:110px;width:112px" onclick="clearData()">Clear</button>
+  <button id="download" class="abs btn" style="left:300px;width:142px" onclick="downloadData()">Download</button>
+
+<!--  <div id="position" class="abs"></div> -->
+
+  <div id="direction" class="abs"> 
+    <canvas id="cadranDirection" width=140px height=140px> </canvas>
+  </div> 
+
+  <div id="mowerPosition" class="abs">
+    <table width=530px;>
+      <tr style="margin:0 0 0 0; font-size:12px;background: #AAA;">
+        <td colspan="2"; style="margin:0 0 0 0; font-size:12px;background: #AAA;"><b>Position</b></td>
+        <td colspan="2"; style="margin:0 0 0 0; font-size:12px;background: #AAA;"><b>Battery</b></td>
+      </tr>
+      <tr style="margin:0 0 0 0; font-size:12px;background: #777;">
+        <td style="margin:0 0 0 0; font-size:12px;background: #999;"><b>X</b></td>
+        <td style="margin:0 0 0 0; font-size:12px;background: #FFF;border:1px solid #555;"; id="xPosition" ></td>
+        <td style="margin:0 0 0 0; font-size:12px;background: #999;"><b>Level</b></td>
+        <td style="margin:0 0 0 0; font-size:12px;background: #FFF;border:1px solid #555;"; id="batLevel" ></td>
+      </tr>
+      <tr style="margin:0 0 0 0; font-size:12px;background: #777;">
+        <td style="margin:0 0 0 0; font-size:12px;background: #999;"><b>Y</b></td>
+        <td style="margin:0 0 0 0; font-size:12px;background: #FFF;border:1px solid #555;"; id="yPosition"></td>
+        <td style="margin:0 0 0 0; font-size:12px;background: #999;"><b>Distance</b></td>
+        <td style="margin:0 0 0 0; font-size:12px;background: #FFF;border:1px solid #555;"; id="totalDistance" ></td>
+      </tr>
+      <tr style="margin:0 0 0 0; font-size:12px;background: #777;">
+        <td style="margin:0 0 0 0; font-size:12px;background: #999;"><b>Z</b></td>
+        <td style="margin:0 0 0 0; font-size:12px;background: #FFF;border:1px solid #555;";id="zPosition"></td>
+      </tr>
+
+    </table> 
+  </div> 
+
+  <div id="logArea" class="abs"></div>
+
+  <div id="map" class="abs">
+    <canvas id="dessin" width="695" height="430"> </canvas>
+  </div>
+</div>
+
+</body>
+</html>

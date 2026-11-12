@@ -1,0 +1,8 @@
+> téléchargement / Sauvegarde sous la forme d'un fichier
+> afficher que les waypoints
+> recevoir tous les points de odom
+> afficher les waypoints en rouge sur la carte
+> afficher la trajectoire selon une distance donnée 
+> gestion de waypoints pour constituer une zone ou un obstacle
+> sauver sur GIT
+

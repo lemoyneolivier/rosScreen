@@ -1,0 +1,21 @@
+[Unit]
+Description=Lemower piloting screen service
+After=network-online.target
+ 
+[Service]
+Type=simple
+Environment=NODE_PATH=/home/lemower/lemower
+ 
+User=lemower
+Group=lemower
+UMask=007
+ 
+ExecStart=/usr/bin/node /home/lemower/lemower/screen/MowerServer.js /home/lemower/lemower/screen/config.json
+ 
+Restart=on-failure
+ 
+# Configures the time to wait before service is stopped forcefully.
+TimeoutStopSec=300
+ 
+[Install]
+WantedBy=multi-user.target
