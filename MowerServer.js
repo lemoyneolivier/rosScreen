@@ -13,30 +13,18 @@ var publisherCmdvelMower;
 var publisherNode;
 var publisherCmdvelMower;
 
-// angle d'avancement en radius 
-var mowerPosition = {
-  x : 0,
-  y : 0, 
-  speed : 0,
-  direction : 0
-}
-
 //dirname = "c:/Users/a025237/Code/";
-/*****************************
- * Liste des positions /odom
-******************************/
-const mowerPositions = [];
 
-/******************************
- * Liste des ordres envoyés au robot
- ******************************/
-const mowerOrders = [];
+/*******************************
+ * Last known position of the mower
+ * Set at 0/0 at the start
+ */
+var lastMowerPosition = {x:0.0, y:0.0, direction:0.0, speed:0};
 
 /******************************
  *  connexion status 
  * ****************************/
 var isConnected = false;  
-
 
 const mimeTypes = {
   '.html': 'text/html',
@@ -103,16 +91,13 @@ if (!testMode) {
     const timestamp =msg.header.stamp.sec;//Math.floor(new Date().getTime() / 1000);
     // Extraction de la position (X, Y, Z)
     const position = msg.pose.pose.position;
-    mowerPosition.x = parseFloat(position.x.toFixed(2));
-    mowerPosition.y = parseFloat(position.y.toFixed(2));
+    lastMowerPosition.x = parseFloat(position.x.toFixed(2));
+    lastMowerPosition.y = parseFloat(position.y.toFixed(2));
     // ajouter la vitesse et la direction
     const dir = msg.pose.pose.orientation;
-    mowerPosition.direction = Math.atan2(2*dir.w*dir.z, 1-2*Math.pow(dir.z, 2));
+    lastMowerPosition.direction = Math.atan2(2*dir.w*dir.z, 1-2*Math.pow(dir.z, 2));
     const spd = msg.twist.twist.linear;
-    mowerPosition.speed = Math.hypot(spd.x, spd.y);
-    
-    // Add the position
-    addPosition(timestamp, mowerPosition.x, mowerPosition.y, mowerPosition.speed, mowerPosition.direction);
+    lastMowerPosition.speed = Math.hypot(spd.x, spd.y);
   });
   listenerNode.spin();
 
@@ -175,18 +160,17 @@ executeOrder = function (direction, speed) {
     // update of the position - mowerPosition 
     log(0, "Test mode: order not sent to robot");
     if (direction == "Forward") {
-      mowerPosition.speed = parseFloat(speed);
+      lastMowerPosition.speed = parseFloat(speed);
     }
     if (direction == "Backward") {
-      mowerPosition.speed = -parseFloat(speed);
+      lastMowerPosition.speed = -parseFloat(speed);
     }
     if (direction == "Left") {
-      mowerPosition.direction -= 0.1;
+      lastMowerPosition.direction -= 0.1;
     }
     if (direction == "Right") {
-      mowerPosition.direction += 0.1;
+      lastMowerPosition.direction += 0.1;
     }
-    log(0, "Order "+JSON.stringify(mowerPosition));
   } else {
 
     // send the order to the robot via the node
@@ -207,13 +191,13 @@ executeOrder = function (direction, speed) {
     }
     if (direction == "Left") {
       order = {
-        linear: { x: 0.5, y: 0.0, z: 0.0 },
+        linear: { x: 0.0, y: 0.0, z: 0.0 },
         angular: { x: 0.0, y: 0.0, z: -angle }
       }
     }
     if (direction == "Right") {
       order = {
-        linear: { x: 0.5, y: 0.0, z: 0.0 },
+        linear: { x: 0.0, y: 0.0, z: 0.0 },
         angular: { x: 0.0, y: 0, z: angle }
       }
     }
@@ -227,73 +211,35 @@ executeOrder = function (direction, speed) {
     publisherCmdvelMower.publish(twistStampedMsg);
   }
 
-  return {direction: mowerPosition.direction, speed: speed, time: Math.floor(new Date().getTime() / 1000)};
+  return {status: "ok", time: Math.floor(new Date().getTime() / 1000)};
 }
 
-
-/*************************************************************
- * Ajoute une position au tableau des positions du robot
- * si les positions sont trop proches, on ne les ajoute pas
- *************************************************************/
-addPosition = function (timestamp, x, y, s, d) {
-  isConnected = true;
-  // Vérifie si la position est trop proche d'une position existante
-  if (mowerPositions.length > 0) {
-    const lastPos = mowerPositions[mowerPositions.length - 1];
-    const distance = Math.hypot(x - lastPos.x, y - lastPos.y);
-
-    const precision = config.roundingPrecision || 3;
-    x = parseFloat(x.toFixed(precision));
-    y = parseFloat(y.toFixed(precision)); 
-
-    if (distance < stepFilter) { // seuil
-      return;
-    } else {
-      mowerPositions.push({time: timestamp, x: x, y: y, speed: s, direction:d});
-    }
-  } else {
-    const precision = config.roundingPrecision || 3;
-    if (typeof x === 'string') {
-      mowerPositions.push({time: timestamp, x: parseFloat(x), y: parseFloat(y)});
-    } else {
-      x = parseFloat(x.toFixed(precision));
-      y = parseFloat(y.toFixed(precision)); 
-      mowerPositions.push({time: timestamp, x: x, y: y, speed: s, direction:d});
-    } 
-  }
-}
 
 /** Gestion de l'odom en mode test */
 addRandomPosition = function () {
-  log(0, "Random ");
-  if (mowerPosition.speed == 0) {
-    log(0, "No speed ");
+  if (lastMowerPosition.speed == 0) {
     return;
   } 
   
   const timestamp =Math.floor(new Date().getTime() / 1000);
-  const x = Math.random()/10*Math.cos(mowerPosition.direction)*mowerPosition.speed/100;
-  const y = Math.random()/10*Math.sin(mowerPosition.direction)*mowerPosition.speed/100;
-  log(0, "New speed step "+x+" "+y);
+  const x = Math.random()/10*Math.cos(lastMowerPosition.direction)*lastMowerPosition.speed/100;
+  const y = Math.random()/10*Math.sin(lastMowerPosition.direction)*lastMowerPosition.speed/100;
 
-  if (mowerPosition.speed> 0 ) {
-      mowerPosition.speed -=10;
-      if (mowerPosition.speed < 0) {mowerPosition.speed = 0;} 
+  if (lastMowerPosition.speed> 0 ) {
+      lastMowerPosition.speed -=10;
+      if (lastMowerPosition.speed < 0) {lastMowerPosition.speed = 0;} 
   }
-  if (mowerPosition.speed< 0 ) {
-      mowerPosition.speed +=10;
-      if (mowerPosition.speed > 0) {mowerPosition.speed = 0;} 
+  if (lastMowerPosition.speed< 0 ) {
+      lastMowerPosition.speed +=10;
+      if (lastMowerPosition.speed > 0) {lastMowerPosition.speed = 0;} 
   }
-  mowerPosition.x += x;
-  mowerPosition.y += y;
-  // Add the position
-  log(0, "New position of the mower : "+mowerPosition.x+", "+mowerPosition.y);
-  addPosition(timestamp, mowerPosition.x, mowerPosition.y, mowerPosition.speed, mowerPosition.direction);
+  lastMowerPosition.x += x;
+  lastMowerPosition.y += y;
 }
 
 if (testMode) {
-      // affiche le status toutes les secondes
-    setInterval(addRandomPosition, 1000);
+      // calcule la distance 10 fois par secondes toutes les secondes
+    setInterval(addRandomPosition, 100);
 }
 
 
@@ -303,15 +249,6 @@ if (testMode) {
 cleanPositions = function () {
   mowerPositions.splice(0, mowerPositions.length);
 }
-
-
-/**************************************************************************************************************** 
- * Reading the robot position from ros /odom topic
- *  the position is also added to the mowerPositions array
- ****************************************************************************************************************/
-if (!testMode) {
-} 
-
 
 
 /****************************************************************************************************************
@@ -337,11 +274,11 @@ const requestListener = (req, res) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `positions_${timestamp}.csv`;
     const filepath = path.join(config.savePath, filename);
-    const csvData = mowerPositions.map(pos => `${pos.time},${pos.x},${pos.y}`).join('\n');
+    const csvData = mowerWayPoints.map(pos => `${pos.time},${pos.x},${pos.y}`).join('\n');
     fs.writeFileSync(filepath, csvData);
-    log(0, `Saved ${mowerPositions.length} positions to ${filepath}`);
+    log(0, `Saved ${mowerWayPoints.length} positions to ${filepath}`);
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ message: `Saved ${mowerPositions.length} positions to ${filepath}` }));
+    res.end(JSON.stringify({ message: `Saved ${mowerWayPoints.length} positions to ${filepath}` }));
     return;
   }
 
@@ -374,56 +311,24 @@ const requestListener = (req, res) => {
   }
 
   /***************************************
-   *  check the connexion status of the robot
+   *  check the connexion status of the robot and the position
    *   depending on the reciving of /odom topic
    * ***************************************/ 
-  if (req.url== '/connexion') {
+  if (req.url== '/update') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      if (testMode) {
-        res.end(JSON.stringify({connexion:"Test"}));
-        return;
-      }
-      if (isConnected) {
-        res.end(JSON.stringify({connexion:"Ready"}));
+      var ret = {};
+      if (testMode) { 
+        ret.connexion="Test";
       } else {
-        res.end(JSON.stringify({connexion:"Not"}));
-      }
-      return;
-  }
-
-  /***
-   * returns the list of positions of the robot
-   */
-  if (req.url== '/positions') {
-      let body = "";
-      req.on("data", data => {
-        body += data.toString(); 
-      });
-      // traitement de la data
-      req.on("end", () => {
-        var ask = JSON.parse(body);
-        // check if the data is well formed
-        if (!ask.from === undefined) {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(mowerPositions));
-          return;
+        if (isConnected) {
+          ret.connexion="Ready";
         } else {
-          var resPosition = mowerPositions.filter(pos => pos.time > ask.from);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(resPosition));
+          ret.connexion="not";
         }
-      });
-      return
-  }
-
-
-    /***
-   * returns the list of positions of the robot
-   */
-  if (req.url== '/positions/clean') {
-      cleanPositions();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify("ok"));
+      }
+      ret.position = lastMowerPosition;
+      // ajoute la position du robot
+      res.end(JSON.stringify(ret));
       return;
   }
 

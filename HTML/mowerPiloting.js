@@ -1,13 +1,18 @@
 
-const CONNEXION_OFF = -1;
-const CONNEXION_PENDING = 0;
-const CONNEXION_ON = 1;
-const CONNEXION_TEST = 2;
+const CONNEXION_OFF = "Not";
+const CONNEXION_PENDING = "Connecting";
+const CONNEXION_ON = "Ready";
+const CONNEXION_TEST = "Test";
 
 
 var connexionStatus = CONNEXION_OFF;
-var mowerDirection = 0;
-var mowerLastPosition = {};
+var mowerLastPosition = {x:0.0, y:0.0, direction:0.0, speed:0.0, totalDistance: 0.0};
+var minDist = 0.01;
+var mowerPositions = []; // liste des positions enregistrées
+var waypoints = [];
+var mapDetails = {xMin:-1, yMin:-1, xMax:1, yMax:1, zoom:215.0};
+
+var canvasMap = document.getElementById("dessin");
 
 // message imprimés à l'écran en bande déroulante au format HH:MM:SS - INFO|WARN|ERR - Message (taille limitée)
 // Les messages restent un temps limité à l'écran
@@ -84,7 +89,9 @@ function showMessages() {
  *   Chargement des données au démarrage
  ************************************************************************/ 
 function loadFile() {
-    showStatus();
+    mowerPositions[0] = mowerLastPosition;
+    drawMap(true);
+    drawPosition();
     // affiche le status toutes les secondes
     setInterval(showStatus, 1000);
 }
@@ -102,71 +109,77 @@ function showConnexion () {
             img.src = "imgs/connexionTest.png";
         } else { // PENDING
             var img = document.getElementById("connexion");
-            img.src = "imgs/connexionPending.png";
+            img.src = "imgs/connexionWait.png";
         }
+    }
+}
+
+function addWaypoint() {
+    waypoints.push(mowerLastPosition);
+    // ajoute une ligne dans le tableau des waypoints
+    var points = document.getElementById("odom");
+    var row = points.insertRow(-1);
+    var cell1 = row.insertCell(0);
+    var cell2 = row.insertCell(1);
+    var cell3 = row.insertCell(2);
+    cell1.innerHTML = mowerLastPosition.time;
+    cell2.innerHTML = mowerLastPosition.x;
+    cell3.innerHTML = mowerLastPosition.y;
+    drawMap (true);
+}
+
+
+// détermine s'il faut garder la position
+function addPosition(position) {
+
+    const precision = 3;
+    position.x = parseFloat(position.x.toFixed(precision));
+    position.y = parseFloat(position.y.toFixed(precision)); 
+    const distance = Math.hypot(position.x - mowerLastPosition.x, position.y - mowerLastPosition.y);
+
+    if (distance < 0.001) { // seuil un millimetre
+        console.log("Under the distance "+position.direction);
+        if (position.direction != mowerLastPosition.direction) {
+            mowerLastPosition.direction = position.direction;
+            drawPosition();
+        }
+        return false;
+    } else {
+        mowerPositions.push(position);
+        var dist = mowerLastPosition.totalDistance + distance;
+        mowerLastPosition = position;
+        mowerLastPosition.totalDistance = dist;
+
+        drawPosition();
+        return true;
     }
 }
 
 
 function showStatus () {
     // verifie le statut de connexion avec ARDUINO
-    var cxn = getXMLDocument("/connexion", null);
+    var cxn = getXMLDocument("/update", null);
     if (cxn == null) {  
         writeMessage("ERR", "failed to connect");
         connexionStatus = CONNEXION_OFF;
-    }
-    if (cxn.connexion == "Test") {
-        connexionStatus = CONNEXION_TEST;
         showConnexion();
-    } 
-    if (cxn.connexion == "Ready") {
-        connexionStatus = CONNEXION_ON;
-        showConnexion();
-    } 
-    if (cxn.connexion == "Connecting") {
-        writeMessage("ERR", "Connecting ongoing");
-        connexionStatus = CONNEXION_PENDING;    //
-        showConnexion();
-        return;
-    }
-    if (cxn.connexion == "Not") {
-        writeMessage("ERR", "Not connected");
-        connexionStatus = CONNEXION_OFF;
-        showConnexion();
-        return;
-    }
-    // recherche la liste des position et affiche
-    var odomTable = document.getElementById("odom");
-    var nbRows = odomTable.rows.length-1;
-    // get the last time in the table
-    var lastTime =0;
-    if (nbRows == 0) {
-        lastTime = 0;
+
     } else {
-        lastTime = odomTable.rows[nbRows].cells[0].innerHTML;
-    }
-    var odoms = getXMLDocument("/positions", {from : lastTime});
-    if (odoms.length > 0) {
-        for (var i = 0; i < odoms.length; i++) {
-            var odom = odoms[i];
-            var row = odomTable.insertRow(-1);
-            var cell1 = row.insertCell(0);
-            var cell2 = row.insertCell(1);
-            var cell3 = row.insertCell(2);
-        cell1.innerHTML = odom.time;
-        cell2.innerHTML = odom.x;
-        cell3.innerHTML = odom.y;
+        if (connexionStatus != cxn.connexion) {
+            connexionStatus = cxn.connexion;
+            showConnexion();
         }
     }
-    // redessine la carte avec les positions
-    console.log("Drawing map with " + odomTable.rows.length + " positions");
-    drawMap(odomTable.rows);
-    drawPosition();
+    // recupère la dernière position
+    if (cxn.position != null) {
+        if (addPosition(cxn.position)) {
+            // affiche la carte mise à jour
+            drawMap(false);
+        }
+    } else {
+        console.log("No position defined");
+    }
 }
-
-
-
-
 
 
 /** moving the rover to the required direction
@@ -177,95 +190,86 @@ function executeOrder(dir, speed) {
     var order = {
         direction : dir,
         speed : speed
-    }
+    }    
     step = getXMLDocument("/executeOrder", order);
     if (step != null) {
         console.log(JSON.stringify(step));
         mowerDirection = step.direction;
     }
-    writeMessage("WARN", "Order executed successfully - "+mowerDirection)
+    writeMessage("WARN", "Order executed successfully - ")
 }
 
 /*** suppress orders and positions */
 function clearData() {
-    var step = {};
-    step = getXMLDocument("/positions/clean", null);
-
-    var orderTable = document.getElementById("orders");
-    while( orderTable.rows.length > 1) orderTable.rows[1].remove();
+    mowerPositions = [];
+    mowerWaypoints = [];
     var odomTable = document.getElementById("odom");
     while( odomTable.rows.length > 1) odomTable.rows[1].remove();
+}
+
+// retourne la position de X dans la map
+function getX(y) {
+    return (y - mapDetails.yMin) * mapDetails.zoom;
+}
+
+// retourne la position de X dans la map
+function getY(x) {
+    return canvasMap.height - (x - mapDetails.xMin) * mapDetails.zoom;
 }
 
 /********************************************************
  *   Dessine la zone de tonte et le chemin de la tondeuse
  * Attention, la position de la carte est de bas en haut
  ********************************************************/
-function drawMap (odoms){
-    canvas = document.getElementById("dessin");
-    var ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = 'rgb(136, 227, 144)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+function drawMap (force){
+    var ctx = canvasMap.getContext('2d');
 
-    // Cadre le dessin - definir la zone et le zoom
-    // parcourir le tableau des positions et calculer les min et max de x et y
-    var minX = -1;
-    var maxX = 2;
-    var minY = -1;
-    var maxY = 2;
-    var odomData = [];
-    var totalDistance = 0;
-    var lastOdom = {x:0, y:0};
-    if (odoms.length > 0) {
-        for (var i = 1; i < odoms.length; i++) {
-            var odom = odoms[i]; // row de la table
-            var x = parseFloat(odom.cells[1].innerHTML);
-            var y = parseFloat(odom.cells[2].innerHTML);
-            odomData.push({x: x, y: y});
-            if (x < minX) { minX = x;}
-            if (x > maxX) { maxX = x;}
-            if (y < minY) { minY = y;}
-            if (y > maxY) { maxY = y;}
-            totalDistance += Math.hypot((x-lastOdom.x),(y-lastOdom.y));
-            lastOdom ={x: x, y: y};
-        }
+    //vérifie si la zone de zoon est changée 
+    var isChanged = force;
+    if (mowerLastPosition.x > mapDetails.xMax) {isChanged = true; mapDetails.xMax = mowerLastPosition.x;}
+    if (mowerLastPosition.x < mapDetails.xMin) {isChanged = true; mapDetails.xMin = mowerLastPosition.x;}
+    if (mowerLastPosition.y > mapDetails.yMax) {isChanged = true; mapDetails.yMax = mowerLastPosition.y;}
+    if (mowerLastPosition.y < mapDetails.yMin) {isChanged = true; mapDetails.yMin = mowerLastPosition.y;}
+
+    if ( isChanged ) {
+        var height = mapDetails.xMax - mapDetails.xMin;
+        var width = mapDetails.yMax - mapDetails.yMin;
+        var zoomX = canvasMap.width / width;
+        var zoomY = canvasMap.height / height; 
+        mapDetails.zoom = Math.min(zoomX, zoomY);
+        console.log("reload the map "+JSON.stringify(mapDetails));
+
+        ctx.clearRect(0, 0, canvasMap.width, canvasMap.height);
+        ctx.fillStyle = 'rgb(136, 227, 144)';
+        ctx.fillRect(0, 0, canvasMap.width, canvasMap.height);
+
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgb(0, 0, 0)';
+        ctx.moveTo(getX(-1), getY(0));
+        ctx.lineTo(getX(1), getY(0));
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(getX(0), getY(-1));
+        ctx.lineTo(getX(0), getY(1));
+        ctx.stroke();
     }
 
-
-    var height = maxX - minX;
-    var width = maxY - minY;
-    var zoomX = canvas.width / width;
-    var zoomY = canvas.height / height; 
-    var zoom = Math.min(zoomX, zoomY);
-    // Parcourir le tableau des positions et dessiner les points sur le canvas
-    // print axis
     ctx.beginPath();
-    ctx.strokeStyle = 'rgb(0, 0, 0)';
-    ctx.moveTo((-1 - minY) * zoom, canvas.height- (0 - minX) * zoom);
-    ctx.lineTo((1 - minY) * zoom, canvas.height- (0 - minX) * zoom);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo((0 - minY) * zoom, canvas.height- (-1 - minX) * zoom);
-    ctx.lineTo((0 - minY) * zoom, canvas.height- (1 - minX) * zoom);
-    ctx.stroke();
-
-    if (odomData.length == 0) {
-        writeMessage("ERR", "No odom data to draw");
-        return;
-    }
-    // print the path
-    ctx.beginPath();
-    ctx.moveTo((odomData[0].y - minY) * zoom, canvas.height- (odomData[0].x - minX) * zoom);
-    for (var i = 1; i < odomData.length; i++) {
-        var odom = odomData[i];
-        var x = (odom.y - minY) * zoom;
-        var y = canvas.height- (odom.x - minX) * zoom;
-        ctx.lineTo(x, y);
+    ctx.strokeStyle = 'rgb("#030303")';
+    ctx.moveTo(getX(mowerPositions[0].y), getY(mowerPositions[0].x));
+    for (var i = 1; i < mowerPositions.length; i++) {
+        ctx.lineTo(getX(mowerPositions[i].y), getY(mowerPositions[i].x));
     }
     ctx.stroke();
-    mowerLastPosition = odomData[odomData.length-1];
-    mowerLastPosition.distance = totalDistance;
+
+    // affiche les waypoints comme des cercles
+    for (var i = 0; i < waypoints.length; i++) {
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgb("#FF0000")';
+        ctx.arc(getX(waypoints[i].y), getY(waypoints[i].x), 5, 0, 2* Math.PI);
+        ctx.stroke();
+    }
+
 }
 
 
@@ -283,7 +287,7 @@ function drawPosition (){
     const centerX = canvas.width / 2+2;
     const centerY = canvas.height / 2;
     ctx.translate(centerX, centerY);
-    ctx.rotate(mowerDirection+3.14);
+    ctx.rotate(mowerLastPosition.direction+3.14);
     ctx.beginPath();
     ctx.fillStyle = 'rgb(255, 0, 0)';
     ctx.moveTo(0, 60);

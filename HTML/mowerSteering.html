@@ -65,15 +65,16 @@
   <button class="abs arrow" style="left:422px" data-dir="Gauche"><img src="imgs/gauche.png" onclick="executeOrder('Left', 50)"/></button>
 
   <div class="abs panel" style="left:0px; overflow: auto">
-    <h3>Odometry</h3>
+    <h3>Waypoints</h3>
     <table id="odom"><thead><tr><th style="width:48%">Time</th><th>X</th><th>Y</th></tr></thead>
       <tbody></tbody></table>
   </div>
 
 
   <div id="bottombar" class="abs bar"></div>
-  <button id="clear" class="abs btn" style="left:110px;width:112px" onclick="clearData()">Clear</button>
-  <button id="download" class="abs btn" style="left:300px;width:142px" onclick="downloadData()">Download</button>
+  <button id="clear" class="abs btn" style="left:50px;width:112px" onclick="clearData()">Clear</button>
+  <button id="download" class="abs btn" style="left:170px;width:142px" onclick="downloadData()">Download</button>
+  <button id="addWaypoint" class="abs btn" style="left:320px;width:142px" onclick="addWaypoint()">Waypoint</button>
 
 <!--  <div id="position" class="abs"></div> -->
 
