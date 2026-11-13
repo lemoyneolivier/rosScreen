@@ -42,6 +42,23 @@ function getXMLDocument (fname, data) {
     return JSON.parse(xmlDoc);
 }
 
+
+function downloadData() {
+    const csvData = waypoints.map(pos => `${pos.x},${pos.y}`).join('\n');
+    const blob = new Blob([csvData], { type: 'text/txt' });
+    const url = URL.createObjectURL(blob);
+    const lien = document.createElement('a');
+    lien.href = url;
+    lien.download = "mowerWaypoints.txt";
+      // 4. Ajouter l'élément au DOM, déclencher le clic, puis nettoyer
+    document.body.appendChild(lien);
+    lien.click();
+    document.body.removeChild(lien);
+  // 5. Libérer la mémoire en révoquant l'URL
+    URL.revokeObjectURL(url);
+}
+
+
 /** gestion des messages */
 function writeMessage(type, msg) {
     // Ajoute un message à la liste des informations et supprime les vieux (+ 10sec)
@@ -114,17 +131,24 @@ function showConnexion () {
     }
 }
 
+/** ajoute un way point à la position  */
 function addWaypoint() {
+    // avoid duplicate
+    if (waypoints.length > 0) {
+        var last = waypoints[waypoints.length-1];
+        if ((last.x == mowerLastPosition.x) && (last.y == mowerLastPosition.y)) {
+            writeMessage("ERR", "Duplicate waypoint");
+            return;
+        }
+    }
     waypoints.push(mowerLastPosition);
     // ajoute une ligne dans le tableau des waypoints
     var points = document.getElementById("odom");
     var row = points.insertRow(-1);
     var cell1 = row.insertCell(0);
     var cell2 = row.insertCell(1);
-    var cell3 = row.insertCell(2);
-    cell1.innerHTML = mowerLastPosition.time;
-    cell2.innerHTML = mowerLastPosition.x;
-    cell3.innerHTML = mowerLastPosition.y;
+    cell1.innerHTML = mowerLastPosition.x;
+    cell2.innerHTML = mowerLastPosition.y;
     drawMap (true);
 }
 

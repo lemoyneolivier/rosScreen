@@ -1,4 +1,2 @@
-> téléchargement / Sauvegarde sous la forme d'un fichier
-> afficher les waypoints en rouge sur la carte
-> gestion de waypoints pour constituer une zone ou un obstacle
+> téléchargement / Sauvegarde sous la forme d'un fichier avec la liste des waypoints
 
